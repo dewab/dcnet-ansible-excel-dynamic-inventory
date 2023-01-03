@@ -1,0 +1,11 @@
+.netrwhist
+*.DS_Store
+*.LSOverride
+Thumbs.db
+*.swp
+._*
+.zcompdump
+.zsh_history
+.zsh_sessions
+ansible.log
+ansible.cfg
