@@ -4,14 +4,28 @@
 
 $filename = "Virtual_Machine_Standard_Build.xlsx"
 $worksheet = "CSV Export (Do Not Edit)"
-$GroupByCol = "OS" # Optional
 $HostnameCol = "Hostname"
+
+# Optionals
+## To create ansible groups based on this column
+$GroupByCol = "OS"
+## To override the Excel Column Names with the Following Names
+$Headers = @( 
+    "Hostname","CPU","Mem","HDDC","CDatastore","HDDD","DBlockSize", "DDatastore","HDDE","EBlockSize","EDatastore",
+    "HDDL","LBlockSIze","LDatastore","HDDT","TBlockSize","TDatastore","OS","IP1","IP1Portgroup","IP1Subnet",
+    "IP1Gateway","IP2","IP2Portgroup","IP2Subnet","IP2Gateway","IP3","IP3Portgroup","IP3Subnet","IP3Gateway",
+    "BuildOrder","VMFolder","Status","VMHost" )
+
 
 # Required, as Import-Excel throws an error that doesn't impact us, and breaks
 # Ansible's parasing
 $WarningPreference = 'silentlycontinue'
 
-$ExcelData = Import-Excel -Path $filename -WorksheetName $worksheet | Where-Object { $_."$HostnameCol" -ne $null -and $_."$HostnameCol" -ne 0 }
+if ($Headers) {
+    $ExcelData = Import-Excel -Path $filename -WorksheetName $worksheet -HeaderName $Headers -DataOnly | Where-Object { $_."$HostnameCol" -ne $null -and $_."$HostnameCol" -ne 0 }
+} else {
+    $ExcelData = Import-Excel -Path $filename -WorksheetName $worksheet -DataOnly | Where-Object { $_."$HostnameCol" -ne $null -and $_."$HostnameCol" -ne 0 }
+}
 
 # Populate HostVars Hash
 $HostVars = @{}
