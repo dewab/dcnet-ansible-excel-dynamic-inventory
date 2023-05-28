@@ -1,20 +1,63 @@
 #!/usr/bin/env pwsh
 
+$configFile=".\excel_inv.ini"
+
+function Get-IniFile 
+{  
+    param(  
+        [parameter(Mandatory = $true)] [string] $filePath  
+    )  
+    $anonymous = "NoSection"
+    $ini = @{}  
+    switch -regex -file $filePath  
+    {  
+        "^\[(.+)\]$" # Section  
+        {  
+            $section = $matches[1]  
+            $ini[$section] = @{}  
+            $CommentCount = 0  
+        }  
+        "^(;.*)$" # Comment  
+        {  
+            if (!($section))  
+            {  
+                $section = $anonymous  
+                $ini[$section] = @{}  
+            }  
+            $value = $matches[1]  
+            $CommentCount = $CommentCount + 1  
+            $name = "Comment" + $CommentCount  
+            $ini[$section][$name] = $value  
+        }   
+        "(.+?)\s*=\s*(.*)" # Key  
+        {  
+            if (!($section))  
+            {  
+                $section = $anonymous  
+                $ini[$section] = @{}  
+            }  
+            $name,$value = $matches[1..2]  
+            $ini[$section][$name] = $value  
+        }  
+    }  
+    return $ini  
+}  
+
+$config=Get-IniFile $configFile
+
 # Outputs an Anisble Dynamic Inventory from an Excel file
 
-$filename = "Virtual_Machine_Standard_Build.xlsx"
-$worksheet = "CSV Export (Do Not Edit)"
-$HostnameCol = "Hostname"
+$Filename = $config.defaults.Filename
+$WorksheetName = $config.defaults.WorksheetName
+$HostnameColumn = $config.defaults.HostnameColumn
+$GroupByColumn = $config.defaults.GroupByColumn
 
 # Optionals
-## To create ansible groups based on this column
-$GroupByCol = "OS"
-## To override the Excel Column Names with the Following Names
-$Headers = @( 
-    "Hostname","CPU","Mem","HDDC","CDatastore","HDDD","DBlockSize", "DDatastore","HDDE","EBlockSize","EDatastore",
-    "HDDL","LBlockSIze","LDatastore","HDDT","TBlockSize","TDatastore","OS","IP1","IP1Portgroup","IP1Subnet",
-    "IP1Gateway","IP2","IP2Portgroup","IP2Subnet","IP2Gateway","IP3","IP3Portgroup","IP3Subnet","IP3Gateway",
-    "BuildOrder","VMFolder","Status","VMHost" )
+# $Headers = @( 
+#     "Hostname","CPU","Mem","HDDC","CDatastore","HDDD","DBlockSize", "DDatastore","HDDE","EBlockSize","EDatastore",
+#     "HDDL","LBlockSIze","LDatastore","HDDT","TBlockSize","TDatastore","OS","IP1","IP1Portgroup","IP1Subnet",
+#     "IP1Gateway","IP2","IP2Portgroup","IP2Subnet","IP2Gateway","IP3","IP3Portgroup","IP3Subnet","IP3Gateway",
+#     "BuildOrder","VMFolder","Status","VMHost" )
 
 
 # Required, as Import-Excel throws an error that doesn't impact us, and breaks
@@ -22,16 +65,16 @@ $Headers = @(
 $WarningPreference = 'silentlycontinue'
 
 if ($Headers) {
-    $ExcelData = Import-Excel -Path $filename -WorksheetName $worksheet -HeaderName $Headers -DataOnly | Where-Object { $_."$HostnameCol" -ne $null -and $_."$HostnameCol" -ne 0 }
+    $ExcelData = Import-Excel -Path $Filename -WorksheetName $WorksheetName -HeaderName $Headers -DataOnly | Where-Object { $_."$HostnameColumn" -ne $null -and $_."$HostnameColumn" -ne 0 }
 } else {
-    $ExcelData = Import-Excel -Path $filename -WorksheetName $worksheet -DataOnly | Where-Object { $_."$HostnameCol" -ne $null -and $_."$HostnameCol" -ne 0 }
+    $ExcelData = Import-Excel -Path $Filename -WorksheetName $WorksheetName -DataOnly | Where-Object { $_."$HostnameColumn" -ne $null -and $_."$HostnameColumn" -ne 0 }
 }
 
 # Populate HostVars Hash
 $HostVars = @{}
-ForEach ($hostname in $ExcelData."$HostnameCol") {
+ForEach ($hostname in $ExcelData."$HostnameColumn") {
     $temphash = @{}
-    $Facts = $ExcelData | Where-Object { $_."$HostnameCol" -eq $hostname }
+    $Facts = $ExcelData | Where-Object { $_."$HostnameColumn" -eq $hostname }
     $FactNames = $Facts | Get-Member -MemberType Properties | Select-Object -ExpandProperty name
     $FactNames | ForEach-Object {
         $temphash.Add($_,$Facts.$_)
@@ -41,18 +84,19 @@ ForEach ($hostname in $ExcelData."$HostnameCol") {
 
 if ($args -contains '--list') {
     $output = @{
-        'all'   = @($ExcelData."$HostnameCol")
+        'all'   = @($ExcelData."$HostnameColumn")
         '_meta' = @{}
     }
 
     # Add Hostvars to _meta
     $output._meta.Add("hostvars",$HostVars)
     
-    # Create a group for unique entry in GroupByCol, if defined
-    if ($GroupByCol -ne $null) {
-        foreach ($Group in ($ExcelData."$GroupByCol" | Select-Object -Unique)) {
+    # Create a group for unique entry in $GroupByColumn, if defined
+    # if ($config.defaults.GroupByColumn -ne $null) {
+    if ($null -ne $GroupByColumn) {
+        foreach ($Group in ($ExcelData."$GroupByColumn" | Select-Object -Unique)) {
             $output += @{
-                "$Group" = @($ExcelData | Where-Object {$_."$GroupByCol" -eq $Group} | Select-Object -Expand Hostname )
+                "$Group" = @($ExcelData | Where-Object {$_."$GroupByColumn" -eq $Group} | Select-Object -Expand Hostname )
             }
         }
     }
